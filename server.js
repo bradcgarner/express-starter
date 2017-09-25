@@ -2,6 +2,9 @@
 
 const express = require('express');
 const morgan = require('morgan');
+// mongoose only
+const mongoose = require('mongoose');
+const {DATABASE_URL, PORT} = require('./config');
 
 const app = express();
 
@@ -21,27 +24,36 @@ app.use('/endpoint2', router2);
 
 let server; // declare `server` here, then runServer assigns a value.
 
-function runServer() { // start server and return a Promise.  
-  const port = process.env.PORT || 8080;
+// this function connects to our database, then starts the server
+function runServer(databaseUrl=DATABASE_URL, port=PORT) {
   return new Promise((resolve, reject) => {
-    server = app.listen(port, () => {
-      console.log(`Your app is listening on port ${port}`);
-      resolve(server);
-    }).on('error', err => {
-      reject(err);
+    mongoose.connect(databaseUrl, err => { // only if mongoose
+      if (err) {
+        return reject(err);
+      }
+      server = app.listen(port, () => { // always
+        console.log(`Your app is listening on port ${port}`);
+        resolve();
+      }).on('error', err => {
+        mongoose.disconnect(); // only if mongoose
+        reject(err);
+      });
     });
   });
 }
 
-function closeServer() { // close server and return a Promise.
-  return new Promise((resolve, reject) => {
-    console.log('Closing server');
-    server.close(err => { // `server.close` does not natively return a promise, so we manually create one
-      if (err) {
-        reject(err);
-        return; // so we don't also call resolve()     
-      }
-      resolve();
+// this function closes the server, and returns a promise. we'll
+// use it in our integration tests later.
+function closeServer() {
+  return mongoose.disconnect().then(() => { // mongoose only. why no error catch here?
+    return new Promise((resolve, reject) => {
+      console.log('Closing server');
+      server.close(err => {
+        if (err) {
+          return reject(err);
+        }
+        resolve();
+      });
     });
   });
 }
